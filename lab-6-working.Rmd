@@ -208,8 +208,53 @@ cr <- raster(nrow = 822,
              ymn = 18.7309, 
              ymx = 22.44634)
 
+#Now we have a raster that has the same number of columns and rows as par, now can resample hi_sst_84 to match cr. Continuous variable = bilinear interpolation to resample and fill in the old columns
 sst_new <- resample(hi_sst_84, cr, method = "bilinear")
 
-compareRaster(sst_new, hi_par_84) # TRUE!
+compareRaster(sst_new, hi_par_84) # TRUE! = they match
 ```
 
+Create cropped versions of just Kauai
+```{r}
+# Created 'bounds_main' as earlier: 
+
+bounds_main <- as(extent(-159.9, -159.2, 21.7, 22.3), 'SpatialPolygons') # Keep in mind, this could be any polygon shape (state outline, county outline, etc.)
+
+# Reproject
+crs(bounds_main) <- crs(sst_new)
+
+par_kauai <- crop(hi_par_84, bounds_main) #croping the PAR raster to fit Kauii
+sst_kauai <- crop(sst_new, bounds_main) #cropping SST raster to fit Kauii
+
+# Check out PAR:
+plot(par_kauai)
+
+# Then SST:
+plot(sst_kauai)
+
+```
+
+
+Subsetting and setting everything else to NA
+Now we only want to isolate regions where the temperature >= 25.4 and PAR < 54.
+```{r}
+# Habitat
+par_hab <- par_kauai # just makes a copy
+par_hab[par_hab >= 54.0] <- NA #take PAR raster info and subset every PAR value above 54 to NA
+
+plot(par_hab) #only hab less than 54 shows up!
+
+sst_hab <- sst_kauai # also makes a copy
+sst_hab[sst_hab < 25.6] <- NA #temps greater than or equal to 35.6
+
+plot(sst_hab)
+
+#where do these overlap? Using raster::mask
+suit_hab <- mask(sst_hab, par_hab)
+plot(suit_hab)
+
+par(mfrow = c(1,2))
+plot(par_hab)
+plot(sst_hab)
+
+```
