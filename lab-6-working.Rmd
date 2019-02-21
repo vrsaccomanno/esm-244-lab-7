@@ -118,14 +118,98 @@ A simple algebra example/ raster math:
 
 Let's say we're creating a nonsensical variable called "tropicality", which is the sum of the PAR + SST + 2*ChlA. How can we create a layer for tropicality? How do we map?
 
-First let's reprojeect and get everything into the same CRS:
+First let's reprojeect PAR (radiation) and ChlA and get everything into the same CRS:
 
-Use method = "bilinear" for continuous variables, "ngm" for categorical
+Use method = "bilinear" for continuous variables, "ngm" /nearest neighbor for categorical
 ```{r}
 
+#wgs84 is stored from above and we can reuse it here. Bilinear is the default for continuous
 hi_par_84 <- projectRaster(hi_par, crs = wgs84, method = "bilinear")
 
 hi_chla_84 <- projectRaster(hi_chl, crs = wgs84, method = "bilinear")
 
 # Now we have PAR, Chl-a, and SST all in the same CRS (WGS84) and can start doing some simple algebra. 
 ```
+Plot them side-by-side:
+```{r}
+par(mfrow = c(1,3))
+plot(hi_sst_84)
+plot(hi_chla_84)
+plot(hi_par_84)
+
+#Checking out the scales of the three variables. This way we know the potentail ranges of adding our raster data together (~75)
+```
+
+
+Raster math is pretty straightforward: 
+```{r}
+#It says raster extents are different - not perfectly additive. Only intersections included. Sometimes will need to coerce raster data to be perfectly aligned.
+
+#Raster math challenges: different extents/resultions/projections, and big datasets
+
+trop <- hi_par_84 + hi_sst_84 + 2*hi_chla_84
+plot(trop)
+```
+
+
+And we might want to plot these in tmap instead: 
+
+Let's look at sea surface temperature. 
+```{r}
+
+islands <- read_sf(dsn = 'islands', layer = "Island_boundaries") %>% #file name + file type
+  dplyr::select(Island) %>% #only select island name. Make sure to call dplyr to use select form dplyr
+  st_simplify(dTolerance = 10) %>% 
+  st_transform(crs = 4326) #need to transform to make sure same crs
+
+plot(islands)
+
+tmap_mode("plot") # or switch to tmap_mode("view")
+
+tm_shape(hi_sst_84) + 
+  tm_raster(title = "Mean Sea Surface Temperature") + #raster layer first
+  tm_layout(bg.color = "navyblue", #change background color
+            legend.position = c("left","bottom"),
+            legend.text.color = "white", 
+            legend.text.size = 0.5) +
+  tm_shape(islands) +
+  tm_fill("darkgreen")
+
+# Or name it and export
+sst_map <- tm_shape(hi_sst_84) +
+  tm_raster(title = "Mean Sea Surface Temperature") +
+  tm_layout(bg.color = "navyblue", 
+            legend.position = c("left","bottom"),
+            legend.text.color = "white", 
+            legend.text.size = 0.5) +
+  tm_shape(islands) +
+  tm_fill("darkgreen")
+
+#Saving - will show up in the working directory
+tmap_save(sst_map, "sst.png", height=5)
+
+```
+
+What if only want to retain parts of a raster?
+Example: Conditional rasters and masking
+
+Let's say we have a sensitive species and we're trying to find suitable habitat/ a place they like. They like warm water (average temp >= 25.6 deg C) and PAR below 54.
+```{r}
+# Call in console. Currently don't have matching extents, columns nor rows, we need to update:
+extent(hi_sst_84) <- extent(hi_par_84)
+compareRaster(hi_sst_84, hi_par_84) #just says different number of columns, becuase we just set extents
+# Check compareRaster...nope. Mismatching columns & rows is still a problem. 
+
+# But we also need to make sure they have the same number of rows & columns. So make a raster from scratch to match hi_par_84 (pull info form the console)
+cr <- raster(nrow = 822, 
+             ncol = 1229, 
+             xmn = -160.4365, 
+             xmx = -154.5373, 
+             ymn = 18.7309, 
+             ymx = 22.44634)
+
+sst_new <- resample(hi_sst_84, cr, method = "bilinear")
+
+compareRaster(sst_new, hi_par_84) # TRUE!
+```
+
