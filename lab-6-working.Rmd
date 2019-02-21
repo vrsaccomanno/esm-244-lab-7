@@ -258,3 +258,94 @@ plot(par_hab)
 plot(sst_hab)
 
 ```
+
+
+###Part 2. Point pattern analysis
+
+Get the spatial data (counties and red tree voles)
+```{r}
+voles <- read_sf(dsn = 'redtreevoledata', layer = "ds033") %>% 
+  dplyr::select(COUNTY) %>% 
+  filter(COUNTY == "HUM") %>% 
+  st_transform(crs = 4326)
+
+# plot(voles)
+
+# Get Humboldt County outline
+humboldt <- read_sf(dsn = 'redtreevoledata', layer = "california_county_shape_file") %>% 
+  filter(NAME == "Humboldt") %>% 
+  dplyr::select(NAME)
+
+st_crs(humboldt) <- 4326 #assigning a coordinate system
+
+# plot(humboldt)
+
+# Plot them together: 
+tm_shape(humboldt) +
+  tm_fill() +
+  tm_shape(voles) +
+  tm_dots(size = 0.2)
+
+# Or with ggplot2: 
+ggplot() +
+  geom_sf(data = humboldt) +
+  geom_sf(data = voles) +
+
+#Save in the working directory. Can specify units, width, height...    
+ggsave("humvoles.png", 
+       units = "in", 
+       width = 4, 
+       height = 6, 
+       dpi = 300)
+
+# Another example (with tiff...there's also jpeg, png, etc.)
+
+# tiff("humvoles2.tiff", units = "in", width = 5, height = 5, res = 300)
+
+ggplot() +
+  geom_sf(data = humboldt, fill = "black") +
+  geom_sf(data = voles, color = "red", alpha = 0.5)
+
+# dev.off()
+
+
+```
+
+
+We want to explore point patterns in a few different ways. Quadrats. Distance-based methods (neighbor analysis using G-funcation and K-function). 
+
+First we need to convert to 'ppp' and 'owin' - the points and windows, as used by maptools and spatstat (because sf is still catching up for raster and point pattern analysis stuff). So need to convert from SF to general to point.
+```{r}
+
+voles_sp <- as(voles,"Spatial")
+voles_ppp <- as(voles_sp, "ppp") #for point patterns. Check class
+
+humboldt_sp <- as(humboldt, "Spatial") #make it a spatial dataframe
+humboldt_win <- as(humboldt_sp, "owin") #make it a spatial window (outer window)
+#using View()see that lat and long are stored as x and y. Now we have pointes and a bounding window which ppp() wants
+
+voles_pb <- ppp(voles_ppp$x, voles_ppp$y, window = humboldt_win)
+
+plot(voles_pb) #both border and points (events) exist in the same place
+
+#test for spatial evenness by finding the intensity of events in each region. Null = evenness  not csr.
+vole_qt <- quadrat.test(voles_pb, nx = 5, ny = 10) #voles_pb + nx and ny are number of columns/rows for the rectangles created 
+
+#Error okay becuase there are some regions with really small countrs (<5). Testing the null hypothersis of spatial evenness, although it can be called a test for csr. Chi squared test of CSR gives really small p -value = reject null. We conclude that these evenets do not reflect spatial evenness.
+
+# Returns: VoleQT
+# Chi-squared test of CSR using quadrat counts
+
+# data:  VolePPP 
+# X-squared = 425.94, df = 45, p-value < 2.2e-16
+# alternative hypothesis: two.sided 
+# Reject the null hypothesis of spatial evenness! But we still don't know if more clustered or more uniform...
+
+plot(voles_pb)
+plot(vole_qt, add = TRUE, cex = 0.4) #plot qt on top of the combined dataframe
+#top left = how many actually exist
+#bottom = above or below expected density
+#can see that for regions close to whole, expected value = 5.5
+#it does not look like these observations are evenly distributed. But the way that you break up an area can really change the results you get. Could look like evennes in a 4x4
+
+```
