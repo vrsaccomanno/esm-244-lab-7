@@ -372,7 +372,7 @@ tm_shape(vole_raster) +
 Nearest neighbor (G-function). Relevant for disease modeling.
 2 approaches:
 - G-function only considerers the distance of each observation to its nearest neighbor
-- K-function: consideres how close all neighboring objects are to an event
+- K-function (or l-function): consideres how close all neighboring objects are to an event
 ```{r}
 
 #make a sequence to calculate nearest neighbors, proporitons.
@@ -383,12 +383,76 @@ gfunction <- envelope(voles_pb, fun = Gest, r = r, nsim = 20, nrank = 2) # Give 
 
 #Plot what actual observation look like on top of simulation.
 #Plot observed as a function of r to see the g-funtion curve for our observations. By 1.5 it is at 1
-#Need to compare to csr scenario = #gfunction#theo. Run together. Observation line is "higher"than theoretical = more clustered than csr.
+#Need to compare to csr scenario = #gfunction#theo. Run together. Observation line is "higher"than theoretical = more clustered than csr (increaed proportion). Supports visual inspection
 plot(gfunction$obs ~ gfunction$r, type = "l", col = "black", lty = 11)
 lines(gfunction$hi ~ gfunction$r, type = "l", col = "blue", lty = 8)
 lines(gfunction$theo ~ gfunction$r, type = "l", col = "red", lty = 6)
 lines(gfunction$lo ~ gfunction$r, type = "l", col = "green", lty = 4)
 
 # Confirms, in combination with quadrat.test, clustered data!
+
+```
+
+Nearest Neighbor by Ripley's K (using L standardization)
+- asking how close ALL neighbors are. 
+- concentric circles
+
+```{r}
+r2 <- seq(0,0.5, by = 0.05) #new sequence of distances because need to look at much bigger space with all neighbors
+
+lfunction <- envelope(voles_pb, fun = Lest, r = r2, nsim = 20, rank = 2, global = TRUE) #global means apply over the entire window of the study area
+
+plot(lfunction$obs ~ lfunction$r, type = "l", col = "black", lty = 11)
+lines(lfunction$hi ~ lfunction$r, type = "l", col = "blue", lty = 8)
+lines(lfunction$theo ~ lfunction$r, type = "l", col = "red", lty = 6)
+lines(lfunction$lo ~ lfunction$r, type = "l", col = "green", lty = 4)
+
+```
+
+Diggle-Cressie-Loosmore-Ford test of CSR - statistical test for csr
+```{r}
+#Null = csr
+#Small p-value that yes, this is sig diff than complete spatial randomness
+#remember, this is not immue to problems like, if you have a tone of events, likely to find significance.
+
+DCLFTest <- dclf.test(voles_pb, nsim = 30, rank = 2) 
+DCLFTest
+
+```
+
+###Part 3. Kansas rainfall kriging 
+- spatial interpolation by Kriging
+- rainfall in parts of kansas
+```{r}
+# Get Kansas rainfall data
+ks_rain <- read_csv("KSRain2.csv") #just csv so will need to be converted to SF data. R doesn't know that this is spatial
+ks_sf  <-  st_as_sf(ks_rain, coords = c("LON", "LAT"),# making it SF object, call the csv, tell R where the coords are (lon first, then lat, finally give it a coord ref system)
+                 crs = 4326)
+
+plot(ks_sf) #we'll be using the amount 
+
+# Get county data
+ks_counties <- read_sf(dsn = 'KSCounties', layer = "ks_counties_shapefile") #this is SF, in the KSCounties folder, call layer
+st_crs(ks_counties) = 4326 #doesn't have a projection so need to assign one.
+
+# Plot with tmap:
+tm_shape(ks_counties) +
+  tm_fill() +
+  tm_shape(ks_sf) + #add rain points
+  tm_dots("AMT", size = 0.5) #select which attribute you want (we want "amount of rain")
+
+#many obs, kinda evenly spread, some spots where no monitoring
+#Problems in the area where minimal observations to make predictions with.
+
+# Or with ggplot:
+ggplot() +
+  geom_sf(data = ks_counties, 
+          fill = "gray10", 
+          color = "gray20") +
+  geom_sf(data = ks_sf, aes(color = AMT)) +
+  scale_color_gradient(low = "yellow", 
+                       high = "red") +
+  theme_minimal() +
+  coord_sf(datum = NA)
 
 ```
