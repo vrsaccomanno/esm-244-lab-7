@@ -456,3 +456,121 @@ ggplot() +
   coord_sf(datum = NA)
 
 ```
+
+But we want to make predictions across the entire state using kriging. 
+
+First, make the rainfall data a Spatial Points data frame: 
+```{r}
+ks_sp  <- as_Spatial(ks_sf) #spatial points data fram
+```
+
+Then make a spatial grid that we'll krige over (interpolate values over):
+```{r}
+# bbox(ks_sp) to check bounding box of the spatial points
+#request resolution. Allison selected a grid that makes sense for kansas
+lat <- seq(37, 40, length.out = 200)
+long <- seq(-94.6,-102, length.out = 200)
+
+# Take the two vectores and make r  make it into a grid: 
+grid <- expand.grid(lon = long, lat = lat)
+grid_sf <- st_as_sf(grid, coords = c("lon","lat"), crs = 4326) #convert to an SF object = a spatial grid with lat/lon/and projection
+grid_sp <- as_Spatial(grid_sf) #need to convert back to spatial values datafram = spatial points data fram so that the stats package can read it
+
+```
+
+
+Then make a variogram and find the varigram model
+```{r}
+
+# Create the variogram:
+ks_vgm <- variogram(AMT ~ 1, ks_sp) # The ~1 is the type of kriging = ordinary
+
+# Look at it - telling us about varaiance between obser with distance. With rainfall, it makes sense that there will be some weighting with distance. Varigram tells about hwwighting should decay and given us a function.
+plot(ks_vgm)
+
+# Fit the variogram model using reasonable estimates for nugget, sill and range:
+ks_vgm_fit <- fit.variogram(ks_vgm, model = vgm(nugget = 0.2, psill = 0.8, model = "Sph", range = 200))
+
+# Plot them both together
+plot(ks_vgm, ks_vgm_fit) # Cool! So what are the values
+
+# Just FYI: there are other models (Gaussian, Exponential) - how do those line up? 
+ks_vgm_gau <- fit.variogram(ks_vgm, model = vgm(nugget = 0.2, psill = 0.8, model = "Gau", range = 200))
+
+plot(ks_vgm, ks_vgm_gau)
+
+# You can check the sum of squares of residuals for each: 
+attr(ks_vgm_fit, 'SSErr') # 0.00214 (and could compare to other models...)
+
+# We'll stick with the Spherical model: 
+ks_vgm_fit # Nugget = 0.102, sill = 0.954, range = 235
+```
+
+Now, kriging/ spatial interpolation! 
+```{r}
+
+ks_krige <- krige(AMT ~ 1, ks_sp, grid_sp, model=ks_vgm_fit) #krig function is from gstat. Actual data, grid to make new predictions for, and variogram
+
+```
+
+And visualize it: 
+```{r}
+
+ks_krige_df <- as.data.frame(ks_krige) # View it after this to show output
+
+# Rename things to make it a little nicer
+ks_krige_2 <- ks_krige_df %>% 
+  rename(lon = coords.x1, lat = coords.x2, predicted = var1.pred, err = var1.var)
+
+# Make this into spatial data again - make an SF object
+rain_predicted  <-  st_as_sf(ks_krige_2, coords = c("lon", "lat"), 
+                 crs = 4326)
+
+# Get Kansas outline to crop: 
+ks <- read_sf(dsn = "states", layer = "cb_2017_us_state_20m") %>% 
+  dplyr::select(NAME) %>% 
+  filter(NAME == "Kansas") %>% 
+  st_transform(crs = 4326)
+
+# Crop the rainfall data
+rain_cropped <- st_intersection(rain_predicted, ks)
+
+# Initial plot
+plot(rain_cropped) # But this is points
+
+# So is this (cheating...)
+# tmap: 
+  tm_shape(rain_cropped) +
+  tm_dots("predicted", size = 0.05) +
+  tm_shape(ks_counties) +
+  tm_borders() +
+    tm_layout(legend.bg.color = "white", legend.position = c("left","bottom"))
+
+```
+
+Extra...converting sf points to Spatial points to raster (with plotKML package): 
+
+```{r}
+
+# Convert sf object to spatial points
+rain_pts <- as_Spatial(rain_cropped)
+class(rain_pts)
+
+# Rasterize spatial points, make class 'Raster'
+rain_raster <- vect2rast(rain_pts)
+rain_raster2 <- raster(rain_raster)
+
+# Need to aggregate so it's not just tiny cells (and white space)
+rain_raster_agg <- raster::aggregate(rain_raster2, fact = 5, fun = max)
+
+# Then plot the raster
+tm_shape(rain_raster_agg) +
+  tm_raster() +
+  tm_shape(ks_counties) +
+  tm_borders() +
+    tm_layout(legend.bg.color = "white", legend.position = c("left","bottom"))
+
+
+
+```
+

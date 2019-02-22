@@ -408,8 +408,6 @@ DCLFTest
 
 
 ###Part 3. Kansas rainfall kriging 
-
-
 ```{r}
 # Get Kansas rainfall data
 ks_rain <- read_csv("KSRain2.csv")
