@@ -526,13 +526,13 @@ ks_krige_2 <- ks_krige_df %>%
 rain_predicted  <-  st_as_sf(ks_krige_2, coords = c("lon", "lat"), 
                  crs = 4326)
 
-# Get Kansas outline to crop: 
+# Get Kansas outline to crop to it - its in the folder called "states". 
 ks <- read_sf(dsn = "states", layer = "cb_2017_us_state_20m") %>% 
   dplyr::select(NAME) %>% 
   filter(NAME == "Kansas") %>% 
   st_transform(crs = 4326)
 
-# Crop the rainfall data
+# Crop the rainfall data gris by the kansas polygon
 rain_cropped <- st_intersection(rain_predicted, ks)
 
 # Initial plot
