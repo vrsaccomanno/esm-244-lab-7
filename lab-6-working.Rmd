@@ -349,3 +349,46 @@ plot(vole_qt, add = TRUE, cex = 0.4) #plot qt on top of the combined dataframe
 #it does not look like these observations are evenly distributed. But the way that you break up an area can really change the results you get. Could look like evennes in a 4x4
 
 ```
+
+
+Plot kernal densities for spatial data: 
+```{r}
+
+point_density <- density(voles_pb, sigma = 0.02) #sigma is bandwidth. SUper changes the density- must be careful with kernal density to show hotspots. Kernals are completely arbitrary. Must report bandwidth! Bandwidth is an actual measure in space, so ask yourself if sigma is logical
+plot(point_density)
+
+# Can you start viewing this in tmap? Yes, rasterize it(but don't foget that the "raster data" her is arbitrary based off of the bandwidth. TMap is happy with raster data: 
+wgs84 = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+vole_raster <- raster(point_density, crs = wgs84)
+
+# Then plot: 
+tm_shape(vole_raster) +
+  tm_raster(midpoint = NA, 
+            palette = "Blues", 
+            legend.show = FALSE)
+
+```
+
+Nearest neighbor (G-function). Relevant for disease modeling.
+2 approaches:
+- G-function only considerers the distance of each observation to its nearest neighbor
+- K-function: consideres how close all neighboring objects are to an event
+```{r}
+
+#make a sequence to calculate nearest neighbors, proporitons.
+r <- seq(0,0.15, by = 0.005) #what works for this data. Sequence of distance overwhich I'm going to calculate observations with a nearest neighbor within the range. 
+
+#envelope creates simulaitons of different functions we select.
+gfunction <- envelope(voles_pb, fun = Gest, r = r, nsim = 20, nrank = 2) # Give actual data, give built in function (gest), give distances (r), Sig level of Monte Carlo = 0.04
+
+#Plot what actual observation look like on top of simulation.
+#Plot observed as a function of r to see the g-funtion curve for our observations. By 1.5 it is at 1
+#Need to compare to csr scenario = #gfunction#theo. Run together. Observation line is "higher"than theoretical = more clustered than csr.
+plot(gfunction$obs ~ gfunction$r, type = "l", col = "black", lty = 11)
+lines(gfunction$hi ~ gfunction$r, type = "l", col = "blue", lty = 8)
+lines(gfunction$theo ~ gfunction$r, type = "l", col = "red", lty = 6)
+lines(gfunction$lo ~ gfunction$r, type = "l", col = "green", lty = 4)
+
+# Confirms, in combination with quadrat.test, clustered data!
+
+```
